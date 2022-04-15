@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"fmt"
 	"github.com/arabot777/arabot-go/pkg/logger"
 	"time"
 )
@@ -22,10 +23,13 @@ func pusher() {
 		for k, v := range metric.groupsMap {
 			pusher = pusher.Grouping(k, v)
 		}
-		if err := pusher.Push(); err != nil {
-			logger.Errorf("Could not push metric to pushgateway", err)
-		} else {
-			logger.Infof("push metric to pushgateway success")
+		err := pusher.Push()
+		if config.printLog {
+			if err != nil {
+				logger.Errorf(fmt.Sprintf("Could not push metric %s to pushgateway", metric.job), err)
+			} else {
+				logger.Infof("push metric %s to pushgateway success", metric.job)
+			}
 		}
 	}
 }

@@ -25,12 +25,21 @@ func main() {
 	defer logger.Close()
 
 	prometheus.InitMetrics(c.Meta)
+	defer prometheus.Close()
 
 	value := float64(5)
 	for {
-		prometheus.Record("test_hello_world", value, prometheus.MetricType_COUNTER, map[string]string{
-			"customize": "good",
-		})
+		//prometheus.Record("test_hello_world", value, prometheus.MetricType_COUNTER, map[string]string{
+		//	"customize": "good",
+		//})
+		prometheus.RecordGauge("test_hello_world1", map[string]string{
+			"customize1111": "good",
+		}).Set(value)
+
+		prometheus.RecordCounter("test_hello_world2", map[string]string{
+			"customize1111": "good",
+		}).Inc()
+
 		value += float64(1)
 		time.Sleep(30 * time.Second)
 	}

@@ -2,25 +2,47 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/push"
+	"github.com/arabot777/arabot-go/internal/example/helloworld/conf"
+	"github.com/arabot777/arabot-go/pkg/logger"
+	"github.com/arabot777/arabot-go/pkg/prometheus"
+	"github.com/arabot777/arabot-go/pkg/signal"
+	"time"
 )
 
-func main() {
-	ExamplePusherPush()
-}
 
-func ExamplePusherPush() {
-	completionTime := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "woodpecker_difference_cloudserver_ali",
-		Help: "Inconsistent data between clouderserver and ali.",
-	})
-	completionTime.Set(300)                                           // set可以设置任意值（float64）
-	if err := push.New("http://192.168.3.9:9091", "test_woodpecker"). // push.New("pushgateway地址", "job名称")
-										Collector(completionTime).                                  // Collector(completionTime) 给指标赋值
-										Grouping("platform", "woodpecker").Grouping("env", "prod"). // 给指标添加标签，可以添加多个
-										Push(); err != nil {
-		fmt.Printf("Could not push completion time to Pushgateway: %e", err)
+func main() {
+	c, err := conf.ConfigureServiceEnv()
+	if err != nil {
+		panic(err)
 	}
+	// 尽可能在这里做个简单打印，并不计入日志
+	// 方便运维同学查看传入的参数，调整错误的配置
+	fmt.Println(c)
+
+	err = logger.InitLogger(c.Meta)
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Close()
+
+	prometheus.InitMetrics(c.Meta)
+
+	value := float64(5)
+	for {
+		//prometheus.Record("test_hello_world", value, prometheus.MetricType_COUNTER, map[string]string{
+		//	"customize": "good",
+		//})
+		prometheus.RecordGauge("test_hello_world1", map[string]string{
+			"customize1111": "good",
+		}).Set(value)
+		//
+		//prometheus.RecordCounter("test_hello_world2", map[string]string{
+		//	"customize1111": "good",
+		//}).Inc()
+
+		value += float64(1)
+		time.Sleep(30 * time.Second)
+	}
+
+	signal.Wait()
 }

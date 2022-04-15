@@ -2,25 +2,23 @@ package prometheus
 
 import (
 	"github.com/arabot777/arabot-go/pkg/conf/meta"
+	"github.com/arabot777/arabot-go/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"strconv"
-	"sync"
 )
 
 var (
 	metricMaps = make(map[string]*metrics)
 	groupsBase = make(map[string]string, 4)
-	once       sync.Once
 	config     *pusherConfig
 )
 
 type metrics struct {
-	job        string
-	metricType MetricType
-	collector  prometheus.Collector
-	groupsMap  map[string]string
-	pusher     *push.Pusher
+	job       string
+	collector prometheus.Collector
+	groupsMap map[string]string
+	pusher    *push.Pusher
 }
 
 func InitMetrics(m meta.Meta) {
@@ -28,7 +26,7 @@ func InitMetrics(m meta.Meta) {
 	groupsBase["platform"] = m.Platform()
 	groupsBase["service"] = m.Service()
 	groupsBase["version"] = m.Version()
-	config = config.init("http://192.168.3.9:9091")
+	config = config.init("http://192.168.3.9:9091", false)
 
 	go func() {
 		loopPusher()
@@ -36,70 +34,55 @@ func InitMetrics(m meta.Meta) {
 }
 
 func Close() {
-
-}
-
-func Record(job string, value float64, metricType MetricType, groupsMap map[string]string) {
-	switch metricType {
-	case MetricType_GAUGE:
-		recordGauge(job, value, metricType, groupsMap)
-	case MetricType_COUNTER:
-		recordCounter(job, value, metricType, groupsMap)
+	for _, metric := range metricMaps {
+		pusher := metric.pusher
+		_ = pusher.Delete()
+		logger.Infof("record metric %s is closed", metric.job)
 	}
 }
 
-func recordGauge(job string, value float64, metricType MetricType, groupsMap map[string]string) {
+func RecordGauge(job string, groupsMap map[string]string) prometheus.Gauge {
+	var gauge prometheus.Gauge
 	if metric, ok := metricMaps[job]; ok {
 		metric.groupsMap = groupsMap
-		if gauge, ok := metric.collector.(prometheus.Gauge); ok {
-			gauge.Set(value)
-		}
+		gauge, _ = metric.collector.(prometheus.Gauge)
 	} else {
-		once.Do(func() {
-			metric := &metrics{
-				job:        job,
-				metricType: metricType,
-				groupsMap:  groupsMap,
-			}
-			guage := prometheus.NewGauge(prometheus.GaugeOpts{
-				Name: job,
-			})
-			guage.Set(value)
-			metric.collector = guage
-			pusher := push.New(config.pushGatewayURL, job).Collector(guage)
-			for k, v := range groupsBase {
-				pusher = pusher.Grouping(k, v)
-			}
-			metric.pusher = pusher
-			metricMaps[job] = metric
+		metric := &metrics{
+			job:       job,
+			groupsMap: groupsMap,
+		}
+		gauge = prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: job,
 		})
+		newPusher(job, metric, gauge)
 	}
+	return gauge
 }
 
-func recordCounter(job string, value float64, metricType MetricType, groupsMap map[string]string) {
+func RecordCounter(job string, groupsMap map[string]string) prometheus.Counter {
+	var counter prometheus.Counter
 	if metric, ok := metricMaps[job]; ok {
 		metric.groupsMap = groupsMap
-		if counter, ok := metric.collector.(prometheus.Counter); ok {
-			counter.Add(value)
-		}
+		counter, _ = metric.collector.(prometheus.Counter)
 	} else {
-		once.Do(func() {
-			metric := &metrics{
-				job:        job,
-				metricType: metricType,
-				groupsMap:  groupsMap,
-			}
-			counter := prometheus.NewCounter(prometheus.CounterOpts{
-				Name: job,
-			})
-			counter.Add(value)
-			metric.collector = counter
-			pusher := push.New(config.pushGatewayURL, job).Collector(counter)
-			for k, v := range groupsBase {
-				pusher = pusher.Grouping(k, v)
-			}
-			metric.pusher = pusher
-			metricMaps[job] = metric
+		metric := &metrics{
+			job:       job,
+			groupsMap: groupsMap,
+		}
+		counter = prometheus.NewCounter(prometheus.CounterOpts{
+			Name: job,
 		})
+		newPusher(job, metric, counter)
 	}
+	return counter
+}
+
+func newPusher(job string, metric *metrics, collector prometheus.Collector) {
+	metric.collector = collector
+	pusher := push.New(config.pushGatewayURL, job).Collector(collector)
+	for k, v := range groupsBase {
+		pusher = pusher.Grouping(k, v)
+	}
+	metric.pusher = pusher
+	metricMaps[job] = metric
 }
